@@ -162,6 +162,27 @@ extension ViaFfiUsingByteBuffer {
 
 // Implement our protocols for the built-in types that we use.
 
+{% if ci.contains_optional_references() %}
+extension Optional: ViaFfiUsingByteBuffer, ViaFfi, Serializable where Wrapped: Serializable {
+    fileprivate static func read(from buf: Reader) throws -> Self {
+        switch try buf.readInt() as Int8 {
+        case 0: return nil
+        case 1: return try Wrapped.read(from: buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+
+    fileprivate func write(into buf: Writer) {
+        guard let value = self else {
+            buf.writeInt(Int8(0))
+            return
+        }
+        buf.writeInt(Int8(1))
+        value.write(into: buf)
+    }
+}
+{% endif %}
+
 // For every type used in the interface, we provide helper methods for conveniently
 // lifting and lowering that type from C-compatible data, and for reading and writing
 // values of that type in a buffer.
@@ -418,29 +439,6 @@ extension Double: Primitive, ViaFfi {
     }
 }
 
-{% when Type::Optional  with (inner_type) -%}
-{% let inner_type_name = inner_type|type_swift %}
-
-extension Optional {
-// extension Optional: ViaFfiUsingByteBuffer, ViaFfi, Serializable where Wrapped: Serializable {
-    fileprivate static func read{{ canonical_type_name }}(from buf: Reader) throws -> Self {
-        switch try buf.readInt() as Int8 {
-        case 0: return nil
-        case 1: return try Wrapped.read(from: buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-
-    fileprivate func write{{ canonical_type_name }}(into buf: Writer) {
-        guard let value = self else {
-            buf.writeInt(Int8(0))
-            return
-        }
-        buf.writeInt(Int8(1))
-        value.write(into: buf)
-    }
-}
-
 {% when Type::Sequence with (inner_type) -%}
 extension Array where Element {
 // extension Array: ViaFfiU¸singByteBuffer, ViaFfi, Serializable where Element: Serializable {
@@ -493,7 +491,7 @@ extension Dictionary where Key == String, Value {
 {# Helpers for Record types are defined inline with the Record class #}
 
 {% when Type::Object with (object_name) -%}
-{# Object types cannot be lifted, lowered or serialized (yet) #}
+{# Helpers for Object types are defined inline with the Record class #}
 
 {% else %}
 {# This type cannot be lifted, lowered or serialized (yet) #}

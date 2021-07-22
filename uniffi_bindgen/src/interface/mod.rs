@@ -241,6 +241,38 @@ impl<'ci> ComponentInterface {
         }
     }
 
+    pub fn contains_optional_references(&self) -> bool {
+        self.iter_types().iter().any(|t| self.type_contains_optional_references(&t))
+    }
+
+    fn type_contains_optional_references(&self, type_: &Type) -> bool {
+        match type_ {
+            Type::Optional(_) => true,
+            Type::Sequence(t) | Type::Map(t) => {
+                self.type_contains_optional_references(t)
+            }
+            Type::Record(name) => self
+                .get_record_definition(name)
+                .map(|rec| {
+                    rec.fields()
+                        .iter()
+                        .any(|f| self.type_contains_optional_references(&f.type_))
+                })
+                .unwrap_or(false),
+            Type::Enum(name) => self
+                .get_enum_definition(name)
+                .map(|e| {
+                    e.variants().iter().any(|v| {
+                        v.fields()
+                            .iter()
+                            .any(|f| self.type_contains_optional_references(&f.type_))
+                    })
+                })
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
     /// Check whether the given type contains any (possibly nested) unsigned types
     pub fn type_contains_unsigned_types(&self, type_: &Type) -> bool {
         match type_ {

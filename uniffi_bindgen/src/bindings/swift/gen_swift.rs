@@ -212,7 +212,7 @@ mod filters {
             FFIType::RustArcPtr => "void*_Nonnull".into(),
             FFIType::RustBuffer => "RustBuffer".into(),
             FFIType::ForeignBytes => "ForeignBytes".into(),
-            FFIType::ForeignCallback => unimplemented!("Callback interfaces are not implemented"),
+            FFIType::ForeignCallback => "ForeignCallback".into(),
         })
     }
 
@@ -268,6 +268,11 @@ mod filters {
     /// This is used to pass arguments over the FFI, from Swift to Rust.
     pub fn lower_swift(name: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
         match type_ {
+            Type::CallbackInterface(_) => Ok(format!(
+                "{}Internals.lower({})",
+                var_name_swift(name)?,
+                name,
+            )),
             Type::Duration => Ok(format!(
                 "{}.lower{}()",
                 var_name_swift(name)?,
@@ -282,6 +287,11 @@ mod filters {
     /// This is used to receive values over the FFI, from Rust to Swift.
     pub fn lift_swift(name: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
         match type_ {
+            Type::CallbackInterface(_) => Ok(format!(
+                "{}Internals.lift({})",
+                type_swift(type_)?,
+                name,
+            )),
             Type::Duration => Ok(format!(
                 "{}.lift{}({})",
                 type_swift(type_)?,
@@ -298,6 +308,11 @@ mod filters {
     /// that is passed by serializing into bytes.
     pub fn read_swift(name: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
         match type_ {
+            Type::CallbackInterface(_) => Ok(format!(
+                "{}Internals.read({})",
+                type_swift(type_)?,
+                name,
+            )),
             Type::Duration => Ok(format!(
                 "{}.read{}(from: {})",
                 type_swift(type_)?,

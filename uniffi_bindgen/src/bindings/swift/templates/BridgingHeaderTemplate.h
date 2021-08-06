@@ -34,6 +34,11 @@ typedef struct ForeignBytes
     const uint8_t *_Nullable data;
 } ForeignBytes;
 
+typedef struct ForeignCallback
+{
+
+} ForeignCallback;
+
 // Error definitions
 typedef struct RustCallStatus {
     int8_t code;

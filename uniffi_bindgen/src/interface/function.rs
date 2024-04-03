@@ -39,7 +39,7 @@ use anyhow::{bail, Result};
 use super::attributes::{ArgumentAttributes, FunctionAttributes};
 use super::ffi::{FFIArgument, FFIFunction};
 use super::literal::{convert_default_value, Literal};
-use super::types::Type;
+use super::types::{IterTypes, Type, TypeIterator};
 use super::{APIConverter, ComponentInterface};
 
 /// Represents a standalone function.
@@ -82,6 +82,12 @@ impl Function {
         self.attributes.get_throws_err()
     }
 
+    pub fn throws_type(&self) -> Option<Type> {
+        self.attributes
+            .get_throws_err()
+            .map(|name| Type::Error(name.to_owned()))
+    }
+
     pub fn derive_ffi_func(&mut self, ci_prefix: &str) -> Result<()> {
         self.ffi_func.name.push_str(ci_prefix);
         self.ffi_func.name.push('_');
@@ -90,20 +96,17 @@ impl Function {
         self.ffi_func.return_type = self.return_type.as_ref().map(|rt| rt.into());
         Ok(())
     }
+}
 
-    // Intentionally exactly the same as the Method version
-    pub fn contains_unsigned_types(&self, ci: &ComponentInterface) -> bool {
-        let check_return_type = {
-            match self.return_type() {
-                None => false,
-                Some(t) => ci.type_contains_unsigned_types(t),
-            }
-        };
-        check_return_type
-            || self
-                .arguments()
+impl IterTypes for Function {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        Box::new(
+            self.arguments
                 .iter()
-                .any(|&arg| ci.type_contains_unsigned_types(&arg.type_()))
+                .map(IterTypes::iter_types)
+                .flatten()
+                .chain(self.return_type.iter_types()),
+        )
     }
 }
 
@@ -171,6 +174,12 @@ impl Argument {
     }
     pub fn default_value(&self) -> Option<Literal> {
         self.default.clone()
+    }
+}
+
+impl IterTypes for Argument {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        self.type_.iter_types()
     }
 }
 
@@ -250,7 +259,7 @@ mod test {
         assert_eq!(func2.arguments()[1].name(), "arg2");
         assert_eq!(
             func2.arguments()[1].type_().canonical_name(),
-            "RecordTestDict"
+            "TypeTestDict"
         );
         Ok(())
     }

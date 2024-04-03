@@ -92,10 +92,8 @@ mod filters {
             FFIType::UInt64 => ":uint64".to_string(),
             FFIType::Float32 => ":float".to_string(),
             FFIType::Float64 => ":double".to_string(),
-            FFIType::RustCString => ":string".to_string(),
             FFIType::RustArcPtr => ":pointer".to_string(),
             FFIType::RustBuffer => "RustBuffer.by_value".to_string(),
-            FFIType::RustError => "RustError.by_ref".to_string(),
             FFIType::ForeignBytes => "ForeignBytes".to_string(),
             FFIType::ForeignCallback => unimplemented!("Callback interfaces are not implemented"),
         })
@@ -192,6 +190,8 @@ mod filters {
                     )
                 }
             }
+            Type::External { .. } => panic!("No support for external types, yet"),
+            Type::Wrapped { .. } => panic!("No support for wrapped types, yet"),
         })
     }
 
@@ -223,6 +223,8 @@ mod filters {
                 class_name_rb(&type_.canonical_name())?,
                 nm
             ),
+            Type::External { .. } => panic!("No support for lowering external types, yet"),
+            Type::Wrapped { .. } => panic!("No support for lowering wrapped types, yet"),
         })
     }
 
@@ -253,6 +255,8 @@ mod filters {
                 nm,
                 class_name_rb(&type_.canonical_name())?
             ),
+            Type::External { .. } => panic!("No support for lifting external types, yet"),
+            Type::Wrapped { .. } => panic!("No support for lifting wrapped types, yet"),
         })
     }
 }

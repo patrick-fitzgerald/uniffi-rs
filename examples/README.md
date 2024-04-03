@@ -14,7 +14,7 @@ Newcomers are recommended to explore them in the following order:
   object-oriented style.
 * [`./todolist`](./todolist/) is a simplistic todo-list that can only add items and show the last item,
   meant to show how interacting with strings works.
-* [`.rondpoint`](./rondpoint/) exercises complex data types by round-tripping them from the foreign-language
+* [`./rondpoint`](./rondpoint/) exercises complex data types by round-tripping them from the foreign-language
   code, through rust and back agian.
 * [`./fxa-client`](./fxa-client/) doesn't work yet, but it contains aspirational example of what the UDL
   might look like for an actual real-world component.
@@ -41,7 +41,7 @@ If you want to try them out, you will need:
 * The [Swift command-line tools](https://swift.org/download/), particularly `swift`, `swiftc` and
   the `Foundation` package.
 * The [Ruby FFI](https://github.com/ffi/ffi#installation)
-  * `gem install ffi test-unit`
+  * `gem install ffi test-unit rubocop`
 
 We publish a [docker image](https://hub.docker.com/r/rfkelly/uniffi-ci) that has all of this dependencies
 pre-installed, if you want to get up and running quickly.

@@ -62,6 +62,10 @@ pub enum Type {
     Optional(Box<Type>),
     Sequence(Box<Type>),
     Map(/* String, */ Box<Type>),
+    // An FfiConverter we `use` from an external crate
+    External { name: String, crate_name: String },
+    // A local type we will generate an FfiConverter via wrapping a primitive.
+    Wrapped { name: String, prim: Box<Type> },
 }
 
 impl Type {
@@ -89,11 +93,13 @@ impl Type {
             // API defined types.
             // Note that these all get unique names, and the parser ensures that the names do not
             // conflict with a builtin type. We add a prefix to the name to guard against pathological
-            // cases like a record named `SequenceRecord` interfering with `sequence<Record>`
-            Type::Object(nm) => format!("Object{}", nm),
-            Type::Error(nm) => format!("Error{}", nm),
-            Type::Enum(nm) => format!("Enum{}", nm),
-            Type::Record(nm) => format!("Record{}", nm),
+            // cases like a record named `SequenceRecord` interfering with `sequence<Record>`.
+            // However, types that support importing all end up with the same prefix of "Type", so
+            // that the import handling code knows how to find the remote reference.
+            Type::Object(nm) => format!("Type{}", nm),
+            Type::Error(nm) => format!("Type{}", nm),
+            Type::Enum(nm) => format!("Type{}", nm),
+            Type::Record(nm) => format!("Type{}", nm),
             Type::CallbackInterface(nm) => format!("CallbackInterface{}", nm),
             Type::Timestamp => "Timestamp".into(),
             Type::Duration => "Duration".into(),
@@ -105,6 +111,8 @@ impl Type {
             Type::Optional(t) => format!("Optional{}", t.canonical_name()),
             Type::Sequence(t) => format!("Sequence{}", t.canonical_name()),
             Type::Map(t) => format!("Map{}", t.canonical_name()),
+            // A type that exists externally.
+            Type::External { name, .. } | Type::Wrapped { name, .. } => format!("Type{}", name),
         }
     }
 }
@@ -137,16 +145,17 @@ impl From<&Type> for FFIType {
             Type::Object(_) => FFIType::RustArcPtr,
             // Callback interfaces are passed as opaque integer handles.
             Type::CallbackInterface(_) => FFIType::UInt64,
-            // Errors have their own special type.
-            Type::Error(_) => FFIType::RustError,
             // Other types are serialized into a bytebuffer and deserialized on the other side.
             Type::Enum(_)
+            | Type::Error(_)
             | Type::Record(_)
             | Type::Optional(_)
             | Type::Sequence(_)
             | Type::Map(_)
             | Type::Timestamp
-            | Type::Duration => FFIType::RustBuffer,
+            | Type::Duration
+            | Type::External { .. } => FFIType::RustBuffer,
+            Type::Wrapped { prim, .. } => FFIType::from(prim.as_ref()),
         }
     }
 }
@@ -229,6 +238,67 @@ impl TypeUniverse {
     }
 }
 
+/// An abstract type for an iterator over &Type references.
+///
+/// Ideally we would not need to name this type explicitly, and could just
+/// use an `impl Iterator<Item=&Type>` on any method that yields types.
+/// Unfortunately existential types are not currently supported in trait method
+/// signatures, so for now we hide the concrete type behind a box.
+pub type TypeIterator<'a> = Box<dyn Iterator<Item = &'a Type> + 'a>;
+
+/// A trait for objects that may contain references to types.
+///
+/// Various objects in our interface will contain (possibly nested) references to types -
+/// for example a `Record` struct will contain one or more `Field` structs which will each
+/// have an associated type. This trait provides a uniform interface for inspecting the
+/// types references by an object.
+
+pub trait IterTypes {
+    /// Iterate over all types contained within on object.
+    ///
+    /// This method iterates over the types contained with in object, making
+    /// no particular guarantees about ordering or handling of duplicates.
+    ///
+    /// The return type is a Box in order to hide the concrete implementation
+    /// details of the iterator. Ideally we would return `impl Iterator` here
+    /// but that's not currently supported for trait methods.
+    fn iter_types(&self) -> TypeIterator<'_>;
+}
+
+impl<T: IterTypes> IterTypes for &T {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        (*self).iter_types()
+    }
+}
+
+impl<T: IterTypes> IterTypes for Box<T> {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        self.as_ref().iter_types()
+    }
+}
+
+impl<T: IterTypes> IterTypes for Option<T> {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        Box::new(self.iter().map(IterTypes::iter_types).flatten())
+    }
+}
+
+impl IterTypes for Type {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        let nested_types = match self {
+            Type::Optional(t) | Type::Sequence(t) | Type::Map(t) => Some(t.iter_types()),
+            _ => None,
+        };
+        Box::new(std::iter::once(self).chain(nested_types.into_iter().flatten()))
+    }
+}
+
+impl IterTypes for TypeUniverse {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        Box::new(self.all_known_types.iter())
+    }
+}
+
 #[cfg(test)]
 mod test_type {
     use super::*;
@@ -243,7 +313,7 @@ mod test_type {
                 "Example".into()
             )))))
             .canonical_name(),
-            "OptionalSequenceObjectExample"
+            "OptionalSequenceTypeExample"
         );
     }
 }

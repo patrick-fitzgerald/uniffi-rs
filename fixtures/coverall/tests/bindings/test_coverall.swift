@@ -74,9 +74,63 @@ do {
     coveralls.takeOther(other: nil);
     assert(coveralls.strongCount() == 2);
 }
+
+// Test simple errors
+do {
+    let coveralls = Coveralls(name: "test_simple_errors")
+
+    assert(try! coveralls.maybeThrow(shouldThrow: false) == true)
+
+    do {
+        let _ = try coveralls.maybeThrow(shouldThrow: true)
+        fatalError("Should have thrown")
+    } catch CoverallError.TooManyHoles(let message) {
+        // It's okay!
+        assert(message == "The coverall has too many holes")
+    }
+
+    do {
+        let _ = try coveralls.maybeThrowInto(shouldThrow: true)
+        fatalError("Should have thrown")
+    } catch CoverallError.TooManyHoles {
+        // It's okay!
+    }
+
+    // Note: Can't test coveralls.panic() because rust panics trigger a fatal error in swift
+}
+
+// Test complex errors
+do {
+    let coveralls = Coveralls(name: "test_complex_errors")
+
+    assert(try! coveralls.maybeThrowComplex(input: 0) == true)
+
+    do {
+        let _ = try coveralls.maybeThrowComplex(input: 1)
+        fatalError("should have thrown")
+    } catch ComplexError.OsError(let code, let extendedCode) {
+        assert(code == 10)
+        assert(extendedCode == 20)
+    }
+
+    do {
+        let _ = try coveralls.maybeThrowComplex(input: 2)
+        fatalError("should have thrown")
+    } catch ComplexError.PermissionDenied(let reason) {
+        assert(reason == "Forbidden")
+    }
+
+    do {
+        let _ = try coveralls.maybeThrowComplex(input: 3)
+        fatalError("should have thrown")
+    } catch {
+        assert(String(describing: error) == "rustPanic(\"Invalid input\")")
+    }
+
+}
+
 // Swift GC is deterministic, `coveralls` is freed when it goes out of scope.
 assert(getNumAlive() == 0);
-
 
 // Test return objects
 do {

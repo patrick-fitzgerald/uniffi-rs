@@ -15,6 +15,9 @@
   - [Functions](./udl/functions.md)
     - [Throwing errors](./udl/errors.md)
   - [Interfaces/Objects](./udl/interfaces.md)
+  - [External Types](./udl/ext_types.md)
+    - [Declaring External Types](./udl/ext_types_external.md)
+    - [Implementing Wrapped Types](./udl/ext_types_wrapped.md)
 
 # Kotlin
 
@@ -22,10 +25,12 @@
 
 # Swift
 
+- [Overview](./swift/overview.md)
 - [Building a Swift module](./swift/module.md)
 - [Integrating with XCode](./swift/xcode.md)
 
 # Internals
+- [Design Principles](./internals/design_principles.md)
 - [Navigating the code](./internals/crates.md)
 - [Lifting, Lowering, and Serialization](./internals/lifting_and_lowering.md)
 - [Managing object references](./internals/object_references.md)

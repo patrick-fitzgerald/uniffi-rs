@@ -58,9 +58,6 @@ pub struct RustBuffer {
     len: i32,
     /// The pointer to the allocated buffer of the `Vec<u8>`.
     data: *mut u8,
-    /// This forces the struct to be larger than 16 bytes, as a temporary workaround for a bug in JNA.
-    /// See https://github.com/mozilla/uniffi-rs/issues/334 for details.
-    padding: i64,
 }
 
 impl RustBuffer {
@@ -85,7 +82,6 @@ impl RustBuffer {
             capacity,
             len,
             data,
-            padding: 0,
         }
     }
 
@@ -187,16 +183,6 @@ impl RustBuffer {
 impl Default for RustBuffer {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-unsafe impl crate::deps::ffi_support::IntoFfi for RustBuffer {
-    type Value = Self;
-    fn ffi_default() -> Self {
-        unsafe { Self::from_raw_parts(std::ptr::null_mut(), 0, 0) }
-    }
-    fn into_ffi_value(self) -> Self::Value {
-        self
     }
 }
 

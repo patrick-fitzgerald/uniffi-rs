@@ -2,27 +2,26 @@
 // A rust-owned buffer is represented by its capacity, its current length, and a
 // pointer to the underlying data.
 
-@Structure.FieldOrder("capacity", "len", "data", "padding")
+@Structure.FieldOrder("capacity", "len", "data")
 open class RustBuffer : Structure() {
     @JvmField var capacity: Int = 0
     @JvmField var len: Int = 0
     @JvmField var data: Pointer? = null
-    // Ref https://github.com/mozilla/uniffi-rs/issues/334 for this weird "padding" field.
-    @JvmField var padding: Long = 0
 
     class ByValue : RustBuffer(), Structure.ByValue
+    class ByReference : RustBuffer(), Structure.ByReference
 
     companion object {
-        internal fun alloc(size: Int = 0) = rustCall(InternalError.ByReference()) { err ->
-            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, err)
+        internal fun alloc(size: Int = 0) = rustCall() { status ->
+            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_alloc().name() }}(size, status)
         }
 
-        internal fun free(buf: RustBuffer.ByValue) = rustCall(InternalError.ByReference()) { err ->
-            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_free().name() }}(buf, err)
+        internal fun free(buf: RustBuffer.ByValue) = rustCall() { status ->
+            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_free().name() }}(buf, status)
         }
 
-        internal fun reserve(buf: RustBuffer.ByValue, additional: Int) = rustCall(InternalError.ByReference()) { err ->
-            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_reserve().name() }}(buf, additional, err)
+        internal fun reserve(buf: RustBuffer.ByValue, additional: Int) = rustCall() { status ->
+            _UniFFILib.INSTANCE.{{ ci.ffi_rustbuffer_reserve().name() }}(buf, additional, status)
         }
     }
 
@@ -39,13 +38,10 @@ open class RustBuffer : Structure() {
 // then we might as well copy it into a `RustBuffer`. But it's here for API
 // completeness.
 
-@Structure.FieldOrder("len", "data", "padding", "padding2")
+@Structure.FieldOrder("len", "data")
 open class ForeignBytes : Structure() {
     @JvmField var len: Int = 0
     @JvmField var data: Pointer? = null
-    // Ref https://github.com/mozilla/uniffi-rs/issues/334 for these weird "padding" fields.
-    @JvmField var padding: Long = 0
-    @JvmField var padding2: Int = 0
 
     class ByValue : ForeignBytes(), Structure.ByValue
 }

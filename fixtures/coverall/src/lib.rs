@@ -12,9 +12,33 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum CoverallError {
+pub enum CoverallError {
     #[error("The coverall has too many holes")]
     TooManyHoles,
+}
+
+/// This error doesn't appear in the interface, instead
+/// we rely on an `Into<CoverallError>` impl to surface it to consumers.
+#[derive(Debug, thiserror::Error)]
+pub enum InternalCoverallError {
+    #[error("The coverall has an excess of holes")]
+    ExcessiveHoles,
+}
+
+impl From<InternalCoverallError> for CoverallError {
+    fn from(err: InternalCoverallError) -> CoverallError {
+        match err {
+            InternalCoverallError::ExcessiveHoles => CoverallError::TooManyHoles,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ComplexError {
+    #[error("OsError: {code} ({extended_code})")]
+    OsError { code: i16, extended_code: i16 },
+    #[error("PermissionDenied: {reason}")]
+    PermissionDenied { reason: String },
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +123,7 @@ fn get_num_alive() -> u64 {
 }
 
 type Result<T, E = CoverallError> = std::result::Result<T, E>;
+type ComplexResult<T, E = ComplexError> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 pub struct Coveralls {
@@ -145,6 +170,28 @@ impl Coveralls {
         }
     }
 
+    fn maybe_throw_into(&self, should_throw: bool) -> Result<bool, InternalCoverallError> {
+        if should_throw {
+            Err(InternalCoverallError::ExcessiveHoles)
+        } else {
+            Ok(true)
+        }
+    }
+
+    fn maybe_throw_complex(&self, input: i8) -> ComplexResult<bool> {
+        match input {
+            0 => Ok(true),
+            1 => Err(ComplexError::OsError {
+                code: 10,
+                extended_code: 20,
+            }),
+            2 => Err(ComplexError::PermissionDenied {
+                reason: "Forbidden".to_owned(),
+            }),
+            _ => panic!("Invalid input"),
+        }
+    }
+
     fn panic(&self, message: String) {
         panic!("{}", message);
     }
@@ -188,7 +235,7 @@ impl Drop for Coveralls {
     }
 }
 #[derive(Debug, Clone, Copy)]
-enum Color {
+pub enum Color {
     Red,
     Blue,
     Green,

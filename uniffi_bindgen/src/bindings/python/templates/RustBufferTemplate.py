@@ -4,20 +4,18 @@ class RustBuffer(ctypes.Structure):
         ("capacity", ctypes.c_int32),
         ("len", ctypes.c_int32),
         ("data", ctypes.POINTER(ctypes.c_char)),
-        # Ref https://github.com/mozilla/uniffi-rs/issues/334 for this weird "padding" field.
-        ("padding", ctypes.c_int64),
     ]
 
     @staticmethod
     def alloc(size):
-        return rust_call_with_error(InternalError, _UniFFILib.{{ ci.ffi_rustbuffer_alloc().name() }}, size)
+        return rust_call(_UniFFILib.{{ ci.ffi_rustbuffer_alloc().name() }}, size)
 
     @staticmethod
     def reserve(rbuf, additional):
-        return rust_call_with_error(InternalError, _UniFFILib.{{ ci.ffi_rustbuffer_reserve().name() }}, rbuf, additional)
+        return rust_call(_UniFFILib.{{ ci.ffi_rustbuffer_reserve().name() }}, rbuf, additional)
 
     def free(self):
-        return rust_call_with_error(InternalError, _UniFFILib.{{ ci.ffi_rustbuffer_free().name() }}, self)
+        return rust_call(_UniFFILib.{{ ci.ffi_rustbuffer_free().name() }}, self)
 
     def __str__(self):
         return "RustBuffer(capacity={}, len={}, data={})".format(
@@ -83,24 +81,24 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Duration -%}
 
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Record with (record_name) -%}
     {%- let rec = ci.get_record_definition(record_name).unwrap() -%}
@@ -109,12 +107,12 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Enum with (enum_name) -%}
     {%- let e = ci.get_enum_definition(enum_name).unwrap() -%}
@@ -123,12 +121,12 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Optional with (inner_type) -%}
     # The Optional<T> type for {{ inner_type.canonical_name() }}.
@@ -136,12 +134,12 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Sequence with (inner_type) -%}
     # The Sequence<T> type for {{ inner_type.canonical_name() }}.
@@ -149,12 +147,12 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {% when Type::Map with (inner_type) -%}
     # The Map<T> type for {{ inner_type.canonical_name() }}.
@@ -162,12 +160,12 @@ class RustBuffer(ctypes.Structure):
     @staticmethod
     def allocFrom{{ canonical_type_name }}(v):
         with RustBuffer.allocWithBuilder() as builder:
-            builder.write{{ canonical_type_name }}(v)
+            RustBufferTypeBuilder.write{{ canonical_type_name }}(builder, v)
             return builder.finalize()
 
     def consumeInto{{ canonical_type_name }}(self):
         with self.consumeWithStream() as stream:
-            return stream.read{{ canonical_type_name }}()
+            return RustBufferTypeReader.read{{ canonical_type_name }}(stream)
 
     {%- else -%}
     {#- No code emitted for types that don't lower into a RustBuffer -#}
@@ -179,9 +177,6 @@ class ForeignBytes(ctypes.Structure):
     _fields_ = [
         ("len", ctypes.c_int32),
         ("data", ctypes.POINTER(ctypes.c_char)),
-        # Ref https://github.com/mozilla/uniffi-rs/issues/334 for these weird "padding" fields.
-        ("padding", ctypes.c_int64),
-        ("padding2", ctypes.c_int32),
     ]
 
     def __str__(self):

@@ -60,6 +60,10 @@ test suite you will need:
   * A `ruby` interpreter.
   * The [`FFI`](https://github.com/ffi/ffi) Ruby gem, installable via `gem install FFI`.
 
+We also support an environment variable `UNIFFI_TESTS_DISABLE_EXTENSIONS`;
+It is a set of file extensions, without a leading period and separated by commas.
+Eg, `UNIFFI_TESTS_DISABLE_EXTENSIONS=swift,rb cargo test` will skip test filenames ending in
+`.swift` or `.rb`
 
 ## Navigating the code
 
@@ -79,7 +83,7 @@ Other directories of interest include:
       *foreign-language bindings*, the code that can load the FFI layer exposed by the scaffolding and expose it as a
       higher-level API in a target language. There is a sub-module for each supported language.
 - **[`./uniffi`](../uniffi):** This is a run-time support crate that is used by the generated Rust scaffolding. It
-  controls how values of various types are passed back-and-forth over the FFI layer, by means of the `ViaFfi` trait.
+  controls how values of various types are passed back-and-forth over the FFI layer, by means of the `FfiConverter` trait.
 - **[`./uniffi_build`](../uniffi_build):** This is a small hook to run `uniffi-bindgen` from the `build.rs` script
   of a UniFFI component, in order to automatically generate the Rust scaffolding as part of its build process.
 - **[`./uniffi_macros`](../uniffi_macros):** This contains some helper macros that UniFFI components can use to

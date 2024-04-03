@@ -79,7 +79,7 @@
 use anyhow::{bail, Result};
 
 use super::record::Field;
-use super::types::Type;
+use super::types::{IterTypes, Type, TypeIterator};
 use super::{APIConverter, ComponentInterface};
 
 /// Represents an enum with named variants, each of which may have named
@@ -100,6 +100,12 @@ impl Enum {
         &self.name
     }
 
+    pub fn type_(&self) -> Type {
+        // *sigh* at the clone here, the relationship between a ComponentInterace
+        // and its contained types could use a bit of a cleanup.
+        Type::Enum(self.name.clone())
+    }
+
     pub fn variants(&self) -> Vec<&Variant> {
         self.variants.iter().collect()
     }
@@ -107,19 +113,11 @@ impl Enum {
     pub fn is_flat(&self) -> bool {
         self.flat
     }
+}
 
-    pub fn contains_object_references(&self, ci: &ComponentInterface) -> bool {
-        // *sigh* at the clone here, the relationship between a ComponentInterace
-        // and its contained types could use a bit of a cleanup.
-        ci.type_contains_object_references(&Type::Enum(self.name.clone()))
-    }
-
-    pub fn contains_unsigned_types(&self, ci: &ComponentInterface) -> bool {
-        self.variants().iter().any(|v| {
-            v.fields()
-                .iter()
-                .any(|f| ci.type_contains_unsigned_types(&f.type_))
-        })
+impl IterTypes for Enum {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        Box::new(self.variants.iter().map(IterTypes::iter_types).flatten())
     }
 }
 
@@ -142,6 +140,7 @@ impl APIConverter<Enum> for weedle::EnumDefinition<'_> {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?,
+            // Enums declared using the `enum` syntax can never have variants with fields.
             flat: true,
         })
     }
@@ -168,6 +167,7 @@ impl APIConverter<Enum> for weedle::InterfaceDefinition<'_> {
                     ),
                 })
                 .collect::<Result<Vec<_>>>()?,
+            // Enums declared using the `[Enum] interface` syntax might have variants with fields.
             flat: false,
         })
     }
@@ -192,6 +192,12 @@ impl Variant {
 
     pub fn has_fields(&self) -> bool {
         !self.fields.is_empty()
+    }
+}
+
+impl IterTypes for Variant {
+    fn iter_types(&self) -> TypeIterator<'_> {
+        Box::new(self.fields.iter().map(IterTypes::iter_types).flatten())
     }
 }
 

@@ -6,6 +6,7 @@ use anyhow::Result;
 use askama::Template;
 
 use super::interface::*;
+use heck::SnakeCase;
 
 #[derive(Template)]
 #[template(syntax = "rs", escape = "none", path = "scaffolding_template.rs")]
@@ -21,7 +22,6 @@ impl<'a> RustScaffolding<'a> {
         }
     }
 }
-
 mod filters {
     use super::*;
     use std::fmt;
@@ -45,9 +45,11 @@ mod filters {
             Type::Enum(name) | Type::Record(name) | Type::Error(name) => name.clone(),
             Type::Object(name) => format!("std::sync::Arc<{}>", name),
             Type::CallbackInterface(name) => format!("Box<dyn {}>", name),
-            Type::Optional(t) => format!("Option<{}>", type_rs(t)?),
-            Type::Sequence(t) => format!("Vec<{}>", type_rs(t)?),
+            Type::Optional(t) => format!("std::option::Option<{}>", type_rs(t)?),
+            Type::Sequence(t) => format!("std::vec::Vec<{}>", type_rs(t)?),
             Type::Map(t) => format!("std::collections::HashMap<String, {}>", type_rs(t)?),
+            Type::External { .. } => panic!("External types coming to a uniffi near you soon!"),
+            Type::Wrapped { .. } => panic!("Wrapped types coming to a uniffi near you soon!"),
         })
     }
 
@@ -63,76 +65,75 @@ mod filters {
             FFIType::UInt64 => "u64".into(),
             FFIType::Float32 => "f32".into(),
             FFIType::Float64 => "f64".into(),
-            FFIType::RustCString => "*mut std::os::raw::c_char".into(),
             FFIType::RustArcPtr => "*const std::os::raw::c_void".into(),
             FFIType::RustBuffer => "uniffi::RustBuffer".into(),
-            FFIType::RustError => "uniffi::deps::ffi_support::ExternError".into(),
             FFIType::ForeignBytes => "uniffi::ForeignBytes".into(),
             FFIType::ForeignCallback => "uniffi::ForeignCallback".into(),
         })
     }
 
-    pub fn lower_rs(nm: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
-        // By explicitly naming the type here, we help the rust compiler to type-check the user-provided
-        // implementations of the functions that we're wrapping (and also to type-check our generated code).
+    /// Get the name of the FfiConverter implementation for this type
+    ///
+    /// - For primitives / standard types this is the type itself.
+    /// - For user-defined types, this is a unique generated name.  We then generate a unit-struct
+    ///   in the scaffolding code that implements FfiConverter.
+    pub fn ffi_converter_name(type_: &Type) -> askama::Result<String> {
         Ok(match type_ {
-            Type::CallbackInterface(type_name) => unimplemented!(
-                "uniffi::ViaFfi::lower is not supported for callback interfaces ({})",
-                type_name
+            // Timestamp/Duraration are handled by standard types
+            Type::Timestamp => "std::time::SystemTime".into(),
+            Type::Duration => "std::time::Duration".into(),
+            // Object is handled by Arc<T>
+            Type::Object(name) => format!("std::sync::Arc<{}>", name),
+            // Other user-defined types are handled by a unit-struct that we generate.  The
+            // FfiConverter implementation for this can be found in one of the scaffolding template code.
+            //
+            // We generate a unit-struct to sidestep Rust's orphan rules (ADR-0006).
+            //
+            // CallbackInterface is handled by special case code on both the scaffolding and
+            // bindings side.  It's not a unit-struct, but the same name generation code works.
+            Type::Enum(_) | Type::Record(_) | Type::Error(_) | Type::CallbackInterface(_) => {
+                format!("FfiConverter{}", type_.canonical_name())
+            }
+            // Wrapper types are implemented by generics that wrap the FfiConverter implementation of the
+            // inner type.
+            Type::Optional(inner) => format!("std::option::Option<{}>", ffi_converter_name(inner)?),
+            Type::Sequence(inner) => format!("std::vec::Vec<{}>", ffi_converter_name(inner)?),
+            Type::Map(inner) => format!(
+                "std::collections::HashMap<String, {}>",
+                ffi_converter_name(inner)?
             ),
-            _ => format!("<{} as uniffi::ViaFfi>::lower({})", type_rs(type_)?, nm),
+            // External and Wrapped bytes have FfiConverters with a predictable name based on the type name.
+            Type::Wrapped { name, .. } | Type::External { name, .. } => {
+                format!("FfiConverterType{}", name)
+            }
+            // Primitive types / strings are implemented by their rust type
+            Type::Int8 => "i8".into(),
+            Type::UInt8 => "u8".into(),
+            Type::Int16 => "i16".into(),
+            Type::UInt16 => "u16".into(),
+            Type::Int32 => "i32".into(),
+            Type::UInt32 => "u32".into(),
+            Type::Int64 => "i64".into(),
+            Type::UInt64 => "u64".into(),
+            Type::Float32 => "f32".into(),
+            Type::Float64 => "f64".into(),
+            Type::String => "String".into(),
+            Type::Boolean => "bool".into(),
         })
     }
 
-    pub fn lift_rs(nm: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
-        // By explicitly naming the type here, we help the rust compiler to type-check the user-provided
-        // implementations of the functions that we're wrapping (and also to type-check our generated code).
-        // This will panic if the bindings provide an invalid value over the FFI.
-        Ok(match type_ {
-            Type::CallbackInterface(type_name) => format!(
-                "Box::new(<{}Proxy as uniffi::ViaFfi>::try_lift({}).unwrap())",
-                type_name, nm,
-            ),
-            _ => format!(
-                "<{} as uniffi::ViaFfi>::try_lift({}).unwrap()",
-                type_rs(type_)?,
-                nm
-            ),
-        })
+    // Map a type to Rust code that specifies the FfiConverter implementation.
+    //
+    // This outputs something like `<TheFfiConverterStruct as FfiConverter>`
+    pub fn ffi_converter(type_: &Type) -> Result<String, askama::Error> {
+        Ok(format!(
+            "<{} as uniffi::FfiConverter>",
+            ffi_converter_name(type_)?
+        ))
     }
 
-    /// Get a Rust expression for writing a value into a byte buffer.
-    pub fn write_rs(
-        nm: &dyn fmt::Display,
-        target: &dyn fmt::Display,
-        type_: &Type,
-    ) -> Result<String, askama::Error> {
-        Ok(match type_ {
-            Type::CallbackInterface(type_name) => unimplemented!(
-                "uniffi::ViaFfi::write is not supported for callback interfaces ({})",
-                type_name
-            ),
-            _ => format!(
-                "<{} as uniffi::ViaFfi>::write(&{}, {})",
-                type_rs(type_)?,
-                nm,
-                target
-            ),
-        })
-    }
-
-    /// Get a Rust expression for writing a value into a byte buffer.
-    pub fn read_rs(target: &dyn fmt::Display, type_: &Type) -> Result<String, askama::Error> {
-        Ok(match type_ {
-            Type::CallbackInterface(type_name) => unimplemented!(
-                "uniffi::ViaFfi::try_read is not supported for callback interfaces ({})",
-                type_name
-            ),
-            _ => format!(
-                "<{} as uniffi::ViaFfi>::try_read({}).unwrap()",
-                type_rs(type_)?,
-                target
-            ),
-        })
+    // Turns a `crate-name` into the `crate_name` the .rs code needs to specify.
+    pub fn crate_name_rs(nm: &dyn fmt::Display) -> Result<String, askama::Error> {
+        Ok(nm.to_string().to_snake_case())
     }
 }

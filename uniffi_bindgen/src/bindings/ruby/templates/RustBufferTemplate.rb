@@ -1,20 +1,18 @@
 class RustBuffer < FFI::Struct
-  # Ref https://github.com/mozilla/uniffi-rs/issues/334 for this weird "padding" field.
   layout :capacity, :int32,
          :len,      :int32,
-         :data,     :pointer,
-         :padding,  :int64
+         :data,     :pointer
 
   def self.alloc(size)
-    return {{ ci.namespace()|class_name_rb }}.rust_call_with_error(InternalError, :{{ ci.ffi_rustbuffer_alloc().name() }}, size)
+    return {{ ci.namespace()|class_name_rb }}.rust_call(:{{ ci.ffi_rustbuffer_alloc().name() }}, size)
   end
 
   def self.reserve(rbuf, additional)
-    return {{ ci.namespace()|class_name_rb }}.rust_call_with_error(InternalError, :{{ ci.ffi_rustbuffer_reserve().name() }}, rbuf, additional)
+    return {{ ci.namespace()|class_name_rb }}.rust_call(:{{ ci.ffi_rustbuffer_reserve().name() }}, rbuf, additional)
   end
 
   def free
-    {{ ci.namespace()|class_name_rb }}.rust_call_with_error(InternalError, :{{ ci.ffi_rustbuffer_free().name() }}, self)
+    {{ ci.namespace()|class_name_rb }}.rust_call(:{{ ci.ffi_rustbuffer_free().name() }}, self)
   end
 
   def capacity
@@ -173,9 +171,7 @@ end
 module UniFFILib
   class ForeignBytes < FFI::Struct
     layout :len,      :int32,
-           :data,     :pointer,
-           :padding,  :int64,
-           :padding2, :int32
+           :data,     :pointer
 
     def len
       self[:len]
@@ -190,3 +186,5 @@ module UniFFILib
     end
   end
 end
+
+private_constant :UniFFILib

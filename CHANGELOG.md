@@ -10,21 +10,78 @@
 
 ## [[UnreleasedVersion]] (_[[ReleaseDate]]_)
 
-[All changes in [[UnreleasedVersion]]](https://github.com/mozilla/uniffi-rs/compare/v0.12.0...HEAD).
+[All changes in [[UnreleasedVersion]]](https://github.com/mozilla/uniffi-rs/compare/v0.14.0...HEAD).
 
+## v0.14.0 (_2021-08-17_)
+
+[All changes in v0.14.0](https://github.com/mozilla/uniffi-rs/compare/v0.13.1...v0.14.0).
+
+### ⚠️ Breaking Changes ⚠️
+- The Rust implementations of all `dictionary`, `enum` or `error` types defined in UDL must be
+  public. If you see errors like:
+    `private type <type-name> in public interface`
+  or similar, please declare the types as `pub` in your Rust code.
+
+- Errors declared using the `[Error] enum` syntax will now expose the error string from
+  Rust to the foreign language bindings. This reverts an unintended change in behaviour
+  from the v0.13 release which made the error message inaccessible.
+
+### What's Changed
+
+- You can now use external types of various flavours - see
+  [the fine manual](https://mozilla.github.io/uniffi-rs/udl/ext_types.html)
+
+- An environment variable `UNIFFI_TESTS_DISABLE_EXTENSIONS` can disable foreign language bindings
+  when running tests. See [the contributing guide](./contributing.md) for more.
+
+## v0.13.1 (_2021-08-09_)
+
+[All changes in v0.13.1](https://github.com/mozilla/uniffi-rs/compare/v0.13.0...v0.13.1).
+
+### What's Changed
+
+- Fixed an accidental regression in v0.13.0 where errors were no longer being coerced
+  to the correct type via `Into`. If the UDL declares a `[Throws=ExampleError]` function
+  or method, the underlying implementation can now return anything that is `Into<ExampleError>`,
+  matching the implicit `Into` behavoir of Rust's `?` operator.
+- Fixed an accidental regression in v0.13.0 where the generated Rust scaffolding assumed
+  that the `HashMap` type would be in scope. It now uses fully-qualified type names in order
+  to be more robust.
+
+## v0.13.0 (_2021-08-09_)
+
+[All changes in v0.13.0](https://github.com/mozilla/uniffi-rs/compare/v0.12.0...v0.13.0).
+
+### ⚠️ Breaking Changes ⚠️
+- UniFFI no longer has ffi-support as a dependency.  This means it handles
+  panic logging on its own.  If you previously enabled the `log_panics` feature
+  for `ffi-support`, now you should enable it for `uniffi`.
+- The Swift bindings now explicitly generate two separate Swift modules, one for
+  the high-level Swift code and one for the low-level C FFI. This change is intended
+  to simplify distribution of the bindings via Swift packages, but brings with it
+  some changes to the generated file layout.
+  - For an interface namespace "example", we now generate:
+    - A bridged C module named "exampleFFI" containing the low-level C FFI,
+      consisting of an `exampleFFI.h` file and matching `exampleFFI.modulemap`
+      file. The name can be customized using the `ffi_module_name` config option.
+    - A Swift module named "example" containing the high-level Swift bindings,
+      which imports and uses the low-level C FFI. The name can be customized using
+      the `module_name` config option.
+- Python timestamps will now be in UTC and timezone-aware rather than naive.
 - Kotlin exceptions names will now replace a trailing "Error" with "Exception"
   rather than appending the string (FooException instead of FooErrorException)
+- JNA 5.7 or greater is required for Kotlin consumers
 
 ### What's Changed
 
 - Both python and ruby backends now handle U16 correctly.
-- Python timestamps will now be in UTC and timezone-aware rather than naive.
-- Replaced `lower_into_buffer()` and `try_lift_from_buffer()` with the
-  `RustBufferViaFfi` trait.  If you use those functions in your custom ViaFfi
-  implementation then you'll need to update the code.  Check out the `Option<>`
-  implementation in uniffi/src/lib.rs for an example.
+- Error variants can now contain named fields, similar to Enum variants
+- Replaced the `ViaFfi` trait with the `FfiConverter` trait.  `FfiConverter` is
+  a more flexible version of `ViaFfi` because it can convert any Rust
+  type to/from an Ffi type, rather than only Self.  This allows for using
+  UniFFI with a type defined in an external crate.
 
-## v0.12.0 (2021-06-14)
+## v0.12.0 (_2021-06-14_)
 
 [All changes in v0.12.0](https://github.com/mozilla/uniffi-rs/compare/v0.11.0...v0.12.0).
 
@@ -44,7 +101,7 @@
 - Kotlin objects now implement `AutoCloseable` by default; closing an object instance is equivalent
   to calling its `destroy()` method.
 
-## v0.11.0 (2021-06-03)
+## v0.11.0 (_2021-06-03_)
 
 [All changes in v0.11.0](https://github.com/mozilla/uniffi-rs/compare/v0.10.0...v0.11.0).
 

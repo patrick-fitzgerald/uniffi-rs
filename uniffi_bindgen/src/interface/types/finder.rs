@@ -21,7 +21,7 @@ use std::convert::TryFrom;
 
 use anyhow::{bail, Result};
 
-use super::super::attributes::{EnumAttributes, InterfaceAttributes};
+use super::super::attributes::{EnumAttributes, InterfaceAttributes, TypedefAttributes};
 use super::{Type, TypeUniverse};
 
 /// Trait to help with an early "type discovery" phase when processing the UDL.
@@ -61,6 +61,8 @@ impl TypeFinder for weedle::InterfaceDefinition<'_> {
         // Some enum types are defined using an `interface` with a special attribute.
         if InterfaceAttributes::try_from(self.attributes.as_ref())?.contains_enum_attr() {
             types.add_type_definition(self.identifier.0, Type::Enum(name))
+        } else if InterfaceAttributes::try_from(self.attributes.as_ref())?.contains_error_attr() {
+            types.add_type_definition(self.identifier.0, Type::Error(name))
         } else {
             types.add_type_definition(self.identifier.0, Type::Object(name))
         }
@@ -88,14 +90,35 @@ impl TypeFinder for weedle::EnumDefinition<'_> {
 
 impl TypeFinder for weedle::TypedefDefinition<'_> {
     fn add_type_definitions_to(&self, types: &mut TypeUniverse) -> Result<()> {
-        if self.attributes.is_some() {
-            bail!("no typedef attributes are currently supported");
+        let name = self.identifier.0;
+        let attrs = TypedefAttributes::try_from(self.attributes.as_ref())?;
+        // If we wanted simple `typedef`s, it would be as easy as:
+        // > let t = types.resolve_type_expression(&self.type_)?;
+        // > types.add_type_definition(name, t)
+        // But we don't - `typedef`s are reserved for external types.
+        if attrs.is_wrapped() {
+            // A local type which wraps a primitive and for which we will generate an
+            // `FfiConverter` implementation.
+            let prim = types.resolve_type_expression(&self.type_)?;
+            types.add_type_definition(
+                name,
+                Type::Wrapped {
+                    name: name.to_string(),
+                    prim: prim.into(),
+                },
+            )
+        } else {
+            // A crate which can supply an `FfiConverter`.
+            // We don't reference `self._type`, so ideally we could insist on it being
+            // the literal 'extern' but that's tricky
+            types.add_type_definition(
+                name,
+                Type::External {
+                    name: name.to_string(),
+                    crate_name: attrs.get_crate_name(),
+                },
+            )
         }
-        // For now, we assume that the typedef must refer to an already-defined type, which means
-        // we can look it up in the TypeUniverse. This should suffice for our needs for
-        // a good long while before we consider implementing a more complex delayed resolution strategy.
-        let t = types.resolve_type_expression(&self.type_)?;
-        types.add_type_definition(self.identifier.0, t)
     }
 }
 
@@ -113,66 +136,109 @@ impl TypeFinder for weedle::CallbackInterfaceDefinition<'_> {
 mod test {
     use super::*;
 
+    // A helper to take valid UDL and a closure to check what's in it.
+    fn test_a_finding<F>(udl: &str, tester: F)
+    where
+        F: FnOnce(TypeUniverse),
+    {
+        let idl = weedle::parse(udl).unwrap();
+        let mut types = TypeUniverse::default();
+        types.add_type_definitions_from(idl.as_ref()).unwrap();
+        tester(types);
+    }
+
     #[test]
-    fn test_type_finding() -> Result<()> {
-        const UDL: &str = r#"
+    fn test_type_finding() {
+        test_a_finding(
+            r#"
             callback interface TestCallbacks {
                 string hello(u32 count);
             };
+        "#,
+            |types| {
+                assert!(
+                    matches!(types.get_type_definition("TestCallbacks").unwrap(), Type::CallbackInterface(nm) if nm == "TestCallbacks")
+                );
+            },
+        );
 
+        test_a_finding(
+            r#"
             dictionary TestRecord {
                 u32 field;
             };
+        "#,
+            |types| {
+                assert!(
+                    matches!(types.get_type_definition("TestRecord").unwrap(), Type::Record(nm) if nm == "TestRecord")
+                );
+            },
+        );
 
+        test_a_finding(
+            r#"
             enum TestItems { "one", "two" };
 
             [Error]
             enum TestError { "ErrorOne", "ErrorTwo" };
+        "#,
+            |types| {
+                assert!(
+                    matches!(types.get_type_definition("TestItems").unwrap(), Type::Enum(nm) if nm == "TestItems")
+                );
+                assert!(
+                    matches!(types.get_type_definition("TestError").unwrap(), Type::Error(nm) if nm == "TestError")
+                );
+            },
+        );
 
+        test_a_finding(
+            r#"
             interface TestObject {
                 constructor();
             };
+        "#,
+            |types| {
+                assert!(
+                    matches!(types.get_type_definition("TestObject").unwrap(), Type::Object(nm) if nm == "TestObject")
+                );
+            },
+        );
 
-            typedef TestObject Alias;
-        "#;
-        let idl = weedle::parse(UDL).unwrap();
+        test_a_finding(
+            r#"
+            [External="crate-name"]
+            typedef extern ExternalType;
+
+            [Wrapped]
+            typedef string ExternalWrapping;
+        "#,
+            |types| {
+                assert!(
+                    matches!(types.get_type_definition("ExternalType").unwrap(), Type::External { name, crate_name }
+                                                                                 if name == "ExternalType" && crate_name == "crate-name")
+                );
+                assert!(
+                    matches!(types.get_type_definition("ExternalWrapping").unwrap(), Type::Wrapped { name, prim }
+                                                                                     if name == "ExternalWrapping" && prim == Box::new(Type::String))
+                );
+            },
+        );
+    }
+
+    fn get_err(udl: &str) -> String {
+        let parsed = weedle::parse(udl).unwrap();
         let mut types = TypeUniverse::default();
-        types.add_type_definitions_from(idl.as_ref())?;
-        assert_eq!(types.iter_known_types().count(), 5);
-        assert!(
-            matches!(types.get_type_definition("TestCallbacks").unwrap(), Type::CallbackInterface(nm) if nm == "TestCallbacks")
-        );
-        assert!(
-            matches!(types.get_type_definition("TestRecord").unwrap(), Type::Record(nm) if nm == "TestRecord")
-        );
-        assert!(
-            matches!(types.get_type_definition("TestItems").unwrap(), Type::Enum(nm) if nm == "TestItems")
-        );
-        assert!(
-            matches!(types.get_type_definition("TestError").unwrap(), Type::Error(nm) if nm == "TestError")
-        );
-        assert!(
-            matches!(types.get_type_definition("TestObject").unwrap(), Type::Object(nm) if nm == "TestObject")
-        );
-        assert!(
-            matches!(types.get_type_definition("Alias").unwrap(), Type::Object(nm) if nm == "TestObject")
-        );
-        Ok(())
+        let err = types
+            .add_type_definitions_from(parsed.as_ref())
+            .unwrap_err();
+        err.to_string()
     }
 
     #[test]
-    fn test_error_on_unresolved_typedef() {
-        const UDL: &str = r#"
-            // Sorry, no forward declarations yet...
-            typedef TestRecord Alias;
-
-            dictionary TestRecord {
-                u32 field;
-            };
-        "#;
-        let idl = weedle::parse(UDL).unwrap();
-        let mut types = TypeUniverse::default();
-        let err = types.add_type_definitions_from(idl.as_ref()).unwrap_err();
-        assert_eq!(err.to_string(), "unknown type reference: TestRecord");
+    #[should_panic]
+    fn test_typedef_error_on_no_attr() {
+        // Sorry, still working out what we want for non-imported typedefs..
+        get_err("typedef string Custom;");
     }
 }
